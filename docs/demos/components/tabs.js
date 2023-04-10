@@ -34,8 +34,9 @@ const calendarPanel = html`
     </ul>
   </div>
 `
+
 const tasksPanel = html`
-  <div class="panel">
+  <div class="panel" ref="${(el) => console.log('Mounted Tasks panel on', el)}">
     <h4>Tasks Due</h4>
     <ul
       style="list-style-image: url(https://fonts.gstatic.com/s/i/materialicons/done/v19/24px.svg)"
