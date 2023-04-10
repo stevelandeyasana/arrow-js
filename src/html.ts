@@ -116,6 +116,15 @@ const listeners = new WeakMap<
 >()
 
 /**
+ * Refs that were bound by arrow and should be cleaned up should the
+ * given node be garbage collected.
+ */
+const refs = new WeakMap<
+  ChildNode,
+  ReactiveFunction
+>()
+
+/**
  * A list of HTML templates to a HTMLTemplate element that contains instances
  * of each. This acts as a cache.
  */
@@ -294,6 +303,9 @@ function attrs(node: Element, expressions: ReactiveExpressions): void {
       if (!listeners.has(node)) listeners.set(node, new Map())
       listeners.get(node)?.set(event, expression as unknown as EventListener)
       toRemove.push(attrName)
+    } else if (attrName === 'ref') {
+      expression(node)
+      refs.set(node, expression)
     } else {
       // Logic to determine if this is an IDL attribute or a content attribute
       const isIDL =
@@ -341,6 +353,11 @@ function removeNode(node: ChildNode) {
   listeners
     .get(node)
     ?.forEach((listener, event) => node.removeEventListener(event, listener))
+  const ref = refs.get(node);
+  if (ref) {
+    ref(undefined)
+    refs.delete(node)
+  }
 }
 
 /**
