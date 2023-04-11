@@ -119,7 +119,7 @@ const listeners = new WeakMap<
  * Refs that were bound by arrow and should be cleaned up should the
  * given node be garbage collected.
  */
-const refs = new WeakMap<
+const boundRefs = new WeakMap<
   ChildNode,
   ReactiveFunction
 >()
@@ -232,7 +232,10 @@ export function t(
     const dom = createNodes(toString())
     const refs = new Array<{ node: ChildNode, fn: ReactiveFunction}>();
     const frag = fragment(dom, { i: 0, e: expressions }, (node, fn) => refs.push({ node, fn }))
-    refs.forEach(({ node, fn }) => fn(node))
+    refs.forEach(({ node, fn }) => {
+      boundRefs.set(node, fn);
+      fn(node)
+    })
     return el ? frag(el) : frag()
   }
 
@@ -355,10 +358,10 @@ function removeNode(node: ChildNode) {
   listeners
     .get(node)
     ?.forEach((listener, event) => node.removeEventListener(event, listener))
-  const ref = refs.get(node);
+  const ref = boundRefs.get(node);
   if (ref) {
     ref(undefined)
-    refs.delete(node)
+    boundRefs.delete(node)
   }
 }
 
@@ -464,7 +467,10 @@ function createPartial(group = Symbol(), refs: null | { node: ChildNode, fn: Rea
     } else {
       dom = assignDomChunks(fragment(createNodes(html), expressions, collectRefs)())
       if (refs === null) { // Call refs only if I don't have a parent
-        localRefs.forEach(({ node, fn}) => fn(node))
+        localRefs.forEach(({ node, fn}) => {
+          boundRefs.set(node, fn);
+          fn(node)
+        })
       }
     }
     reset()
@@ -575,7 +581,10 @@ function createPartial(group = Symbol(), refs: null | { node: ChildNode, fn: Rea
       node = next
     }
     removeNodes(toRemove)
-    localRefs.forEach(({ node, fn }) => fn(node))
+    localRefs.forEach(({ node, fn }) => {
+      boundRefs.set(node, fn);
+      fn(node)
+    })
     reset()
   }
 
