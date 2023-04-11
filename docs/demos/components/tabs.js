@@ -5,7 +5,7 @@ const currentTime = new Date().getTime()
 const day = 86400000
 
 const mailPanel = html`
-  <div class="panel">
+  <div class="panel" ref="${() => console.log("Mounted Mail")}">
     <h4>Your Emails</h4>
     <ul style="padding: 0px;">
       <li class="email">
@@ -38,6 +38,7 @@ const calendarPanel = html`
 const tasksPanel = html`
   <div class="panel" ref="${(el) => console.log('Mounted Tasks panel on', el)}">
     <h4>Tasks Due</h4>
+    <input ref="${(el) => el.focus()}" type="text">
     <ul
       style="list-style-image: url(https://fonts.gstatic.com/s/i/materialicons/done/v19/24px.svg)"
     >
@@ -81,7 +82,7 @@ function indicatorPosition() {
   return `top: 0px;height: ${100 / state.tabs.length}%;`
 }
 
-html` <div class="container">
+html` <div class="container" ref="${() => console.log('Mounted root')}">
   <div class="tabs">
     ${() =>
       state.tabs.map(

@@ -230,7 +230,9 @@ export function t(
   }
   const template: ArrowTemplate = (el?: ParentNode) => {
     const dom = createNodes(toString())
-    const frag = fragment(dom, { i: 0, e: expressions })
+    const refs = new Array<{ node: ChildNode, fn: ReactiveFunction}>();
+    const frag = fragment(dom, { i: 0, e: expressions }, (node, fn) => refs.push({ node, fn }))
+    refs.forEach(({ node, fn }) => fn(node))
     return el ? frag(el) : frag()
   }
 
@@ -253,7 +255,8 @@ export function t(
  */
 function fragment(
   dom: DocumentFragment | Node,
-  expressions: ReactiveExpressions
+  expressions: ReactiveExpressions,
+  collectRefs: (node: ChildNode, fn: ReactiveFunction) => void
 ): ArrowFragment {
   let node: Node | undefined | null
   let i = 0
@@ -266,9 +269,9 @@ function fragment(
       continue
     }
     // Bind attributes, add events, and push onto the fragment.
-    if (node instanceof Element) attrs(node, expressions)
+    if (node instanceof Element) attrs(node, expressions, collectRefs)
     if (node.hasChildNodes()) {
-      fragment(node, expressions)
+      fragment(node, expressions, collectRefs)
     }
     // Select lists "default" selections get out of wack when being moved around
     // inside fragments, this resets them.
@@ -288,7 +291,7 @@ function fragment(
  * @param  {Element} node
  * @returns void
  */
-function attrs(node: Element, expressions: ReactiveExpressions): void {
+function attrs(node: Element, expressions: ReactiveExpressions, collectRefs: (node: ChildNode, fn: ReactiveFunction) => void): void {
   const toRemove: string[] = []
   let i = 0
   let attr: Attr
@@ -304,8 +307,7 @@ function attrs(node: Element, expressions: ReactiveExpressions): void {
       listeners.get(node)?.set(event, expression as unknown as EventListener)
       toRemove.push(attrName)
     } else if (attrName === 'ref') {
-      expression(node)
-      refs.set(node, expression)
+      collectRefs(node, expression);
     } else {
       // Logic to determine if this is an IDL attribute or a content attribute
       const isIDL =
@@ -429,11 +431,19 @@ function createNodes(html: string): DocumentFragment {
  * perform a patch of the previously rendered nodes.
  * @returns TemplatePartial
  */
-function createPartial(group = Symbol()): TemplatePartial {
+function createPartial(group = Symbol(), refs: null | { node: ChildNode, fn: ReactiveFunction}[] = null): TemplatePartial {
   let html = ''
   let expressions: ReactiveExpressions = { i: 0, e: [] }
   let chunks: Array<PartialChunk> = []
   let previousChunks: Array<PartialChunk> = []
+
+  let localRefs: { node: ChildNode, fn: ReactiveFunction }[] = []
+  if (refs !== null) {
+    // If I was passed a refs list, use it instead of making my own, so the caller can call them when everything is done
+    localRefs = refs
+  }
+  const collectRefs = (node: ChildNode, fn: ReactiveFunction) => localRefs.push({ node, fn })
+
   const keyedChunks: Map<ArrowTemplateKey, PartialChunk> = new Map()
   const toRemove: ChildNode[] = []
 
@@ -452,7 +462,10 @@ function createPartial(group = Symbol()): TemplatePartial {
         : chunk.dom.push(document.createTextNode(chunk.tpl))
       dom = chunk.dom[0] as Text
     } else {
-      dom = assignDomChunks(fragment(createNodes(html), expressions)())
+      dom = assignDomChunks(fragment(createNodes(html), expressions, collectRefs)())
+      if (refs === null) { // Call refs only if I don't have a parent
+        localRefs.forEach(({ node, fn}) => fn(node))
+      }
     }
     reset()
     return dom
@@ -494,7 +507,7 @@ function createPartial(group = Symbol()): TemplatePartial {
   }
 
   partial._up = () => {
-    const subPartial = createPartial(group)
+    const subPartial = createPartial(group, localRefs)
     let startChunking = 0
     let lastNode: ChildNode = previousChunks[0].dom[0]
     // If this is an empty update, we need to "placehold" its spot in the dom
@@ -562,6 +575,7 @@ function createPartial(group = Symbol()): TemplatePartial {
       node = next
     }
     removeNodes(toRemove)
+    localRefs.forEach(({ node, fn }) => fn(node))
     reset()
   }
 
@@ -573,6 +587,7 @@ function createPartial(group = Symbol()): TemplatePartial {
     expressions = { i: 0, e: [] }
     previousChunks = [...chunks]
     chunks = []
+    localRefs = []
   }
 
   const addPlaceholderChunk = (node?: Comment) => {
